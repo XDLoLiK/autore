@@ -80,7 +80,7 @@ impl Dfa {
             }
 
             // It is safe to unwrap here because every queued state is mapped to some nfa state(s)
-            let curr_mapped_to = mapping.get(&curr_idx).unwrap().clone();
+            let curr_mapped_to = mapping.get(&curr_idx).unwrap();
             let mut new_trans = HashMap::<char, BTreeSet<usize>>::new();
 
             for nfa_idx in curr_mapped_to.iter() {
@@ -101,19 +101,19 @@ impl Dfa {
                 }
             }
 
-            for symbol in new_trans.keys() {
+            for (symbol, nfa_to) in new_trans.iter() {
                 // It is safe to unwrap here as we already know that there is
                 // such a symbol in keys
-                let nfa_to: Vec<_> = new_trans.get(symbol).unwrap().clone().into_iter().collect();
+                let nfa_to: Vec<_> = nfa_to.clone().into_iter().collect();
 
                 let dfa_to = match reverse_mapping.get(&nfa_to) {
                     Some(mapped_dfa) => *mapped_dfa,
                     None => {
-                        let new_state = dfa.new_state();
-                        mapping.insert(new_state, nfa_to.clone());
-                        reverse_mapping.insert(nfa_to.clone(), new_state);
-                        queue.push_back(new_state);
-                        new_state
+                        let new_dfa = dfa.new_state();
+                        mapping.insert(new_dfa, nfa_to.clone());
+                        reverse_mapping.insert(nfa_to.clone(), new_dfa);
+                        queue.push_back(new_dfa);
+                        new_dfa
                     }
                 };
 
