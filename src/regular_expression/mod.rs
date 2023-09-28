@@ -142,7 +142,7 @@ mod tests {
                                 Some(Box::new(RegexOps::Symbol('b')))
                             )
                         ))))),
-                        Some(Box::new(RegexOps::Symbol('a'))),
+                        Some(Box::new(RegexOps::Symbol('a')))
                     ))),
                     Some(Box::new(RegexOps::Symbol('b')))
                 ))),
