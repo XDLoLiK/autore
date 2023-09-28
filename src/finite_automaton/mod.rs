@@ -34,7 +34,7 @@ impl Nfa {
         }
     }
 
-    pub fn simplify(&mut self) {}
+    pub fn eliminate_epsilon(&mut self) {}
 }
 
 impl Dfa {
@@ -51,7 +51,7 @@ impl Dfa {
     /// use autore::finite_automaton::{Nfa, Dfa};
     ///
     /// let mut nfa = Nfa::default();
-    /// nfa.simplify();
+    /// nfa.eliminate_epsilon();
     ///
     /// let dfa = Dfa::from_nfa(&nfa);
     /// ```
@@ -102,8 +102,7 @@ impl Dfa {
             }
 
             for (symbol, nfa_to) in new_trans.iter() {
-                // It is safe to unwrap here as we already know that there is
-                // such a symbol in keys
+                // It is safe to unwrap here as we already know that there is such a symbol in keys
                 let nfa_to: Vec<_> = nfa_to.clone().into_iter().collect();
 
                 let dfa_to = match reverse_mapping.get(&nfa_to) {
@@ -222,5 +221,85 @@ mod tests {
                 ],
             }
         )
+    }
+
+    #[test]
+    fn nfa_to_dfa_unit_3() {
+        let nfa = Nfa {
+            start_state: 0,
+            states: vec![
+                NfaState {
+                    is_final: false,
+                    transitions: BTreeMap::from([('a', vec![1]), ('b', vec![1])]),
+                },
+                NfaState {
+                    is_final: false,
+                    transitions: BTreeMap::from([('a', vec![1]), ('b', vec![1, 2])]),
+                },
+                NfaState {
+                    is_final: false,
+                    transitions: BTreeMap::from([('a', vec![3])]),
+                },
+                NfaState {
+                    is_final: false,
+                    transitions: BTreeMap::from([('a', vec![]), ('b', vec![4])]),
+                },
+                NfaState {
+                    is_final: false,
+                    transitions: BTreeMap::from([('a', vec![5]), ('b', vec![5])]),
+                },
+                NfaState {
+                    is_final: true,
+                    transitions: BTreeMap::from([('a', vec![5]), ('b', vec![5])]),
+                },
+            ],
+        };
+
+        let dfa = Dfa::from_nfa(&nfa);
+
+        assert_eq!(
+            dfa,
+            Dfa {
+                start_state: 0,
+                states: vec![
+                    DfaState {
+                        is_final: false,
+                        transitions: BTreeMap::from([('a', 1), ('b', 1)]),
+                    },
+                    DfaState {
+                        is_final: false,
+                        transitions: BTreeMap::from([('a', 1), ('b', 2)]),
+                    },
+                    DfaState {
+                        is_final: false,
+                        transitions: BTreeMap::from([('a', 3), ('b', 2)]),
+                    },
+                    DfaState {
+                        is_final: false,
+                        transitions: BTreeMap::from([('a', 1), ('b', 4)]),
+                    },
+                    DfaState {
+                        is_final: false,
+                        transitions: BTreeMap::from([('a', 5), ('b', 6)]),
+                    },
+                    DfaState {
+                        is_final: true,
+                        transitions: BTreeMap::from([('a', 8), ('b', 7)]),
+                    },
+                    DfaState {
+                        is_final: true,
+                        transitions: BTreeMap::from([('a', 5), ('b', 6)]),
+                    },
+                    DfaState {
+                        is_final: true,
+                        transitions: BTreeMap::from([('a', 5), ('b', 6)]),
+                    },
+                    DfaState {
+                        is_final: true,
+                        transitions: BTreeMap::from([('a', 8), ('b', 6)]),
+                    },
+                ],
+            }
+        );
     }
 }
