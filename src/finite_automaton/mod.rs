@@ -1,7 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
-pub const EPSILON_TRANSITION: char = '\u{03B5}';
-
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NfaState {
     is_final: bool,
@@ -81,7 +79,7 @@ impl Dfa {
 
             // It is safe to unwrap here because every queued state is mapped to some nfa state(s)
             let curr_mapped_to = mapping.get(&curr_idx).unwrap();
-            let mut new_trans = HashMap::<char, BTreeSet<usize>>::new();
+            let mut new_trans = BTreeMap::<char, BTreeSet<usize>>::new();
 
             for nfa_idx in curr_mapped_to.iter() {
                 let nfa_state = &nfa.states[*nfa_idx];
@@ -284,7 +282,7 @@ mod tests {
                     },
                     DfaState {
                         is_final: true,
-                        transitions: BTreeMap::from([('a', 8), ('b', 7)]),
+                        transitions: BTreeMap::from([('a', 7), ('b', 8)]),
                     },
                     DfaState {
                         is_final: true,
@@ -292,11 +290,11 @@ mod tests {
                     },
                     DfaState {
                         is_final: true,
-                        transitions: BTreeMap::from([('a', 5), ('b', 6)]),
+                        transitions: BTreeMap::from([('a', 7), ('b', 6)]),
                     },
                     DfaState {
                         is_final: true,
-                        transitions: BTreeMap::from([('a', 8), ('b', 6)]),
+                        transitions: BTreeMap::from([('a', 5), ('b', 6)]),
                     },
                 ],
             }
