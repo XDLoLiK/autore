@@ -1,26 +1,9 @@
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+};
 
-type RegexEntry = Option<Box<RegexOps>>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RegexOps {
-    Either(RegexEntry, RegexEntry),
-    Consecutive(RegexEntry, RegexEntry),
-    Repeat(RegexEntry),
-    Symbol(char),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Regex {
-    root: RegexEntry,
-}
-
-impl Default for Regex {
-    fn default() -> Self {
-        Self { root: None }
-    }
-}
+use super::{Regex, RegexEntry, RegexOps};
 
 #[derive(Debug, Default, Clone)]
 struct RegexParser {
