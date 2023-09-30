@@ -1,5 +1,11 @@
-use autore::Regex;
+use autore::{FiniteAutomaton, Regex};
 
 fn main() {
-    let _regex = Regex::from_string("a+b*");
+    let regex = Regex::from_string("a+b");
+    let nfa = FiniteAutomaton::from_regex(&regex);
+    let dfa = FiniteAutomaton::to_dfa(&nfa);
+
+    println!("{:#?}", regex);
+    println!("{:#?}", nfa);
+    println!("{:#?}", dfa);
 }

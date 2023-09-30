@@ -38,7 +38,7 @@ impl RegexParser {
 
     fn get_regex(&mut self) -> Regex {
         Regex {
-            root: self.parse_either(),
+            root: Some(self.parse_either()),
         }
     }
 
@@ -48,7 +48,7 @@ impl RegexParser {
         while let Some('+') = self.expr.chars().nth(self.curr_pos) {
             self.curr_pos += 1;
             let right = self.parse_consecutive();
-            left = Some(Box::new(RegexOps::Either(left, right)));
+            left = Box::new(RegexOps::Either(left, right));
         }
 
         left
@@ -63,7 +63,7 @@ impl RegexParser {
             }
 
             let right = self.parse_repeat();
-            left = Some(Box::new(RegexOps::Consecutive(left, right)));
+            left = Box::new(RegexOps::Consecutive(left, right));
         }
 
         left
@@ -74,7 +74,7 @@ impl RegexParser {
 
         while let Some('*') = self.expr.chars().nth(self.curr_pos) {
             self.curr_pos += 1;
-            ret = Some(Box::new(RegexOps::Repeat(ret)));
+            ret = Box::new(RegexOps::Repeat(ret));
         }
 
         ret
@@ -95,9 +95,13 @@ impl RegexParser {
 
     fn parse_symbol(&mut self) -> RegexEntry {
         match self.expr.chars().nth(self.curr_pos) {
+            Some('1') => {
+                self.curr_pos += 1;
+                Box::new(RegexOps::Epsilon)
+            }
             Some(symbol) => {
                 self.curr_pos += 1;
-                Some(Box::new(RegexOps::Symbol(symbol)))
+                Box::new(RegexOps::Symbol(symbol))
             }
             None => {
                 panic!("Parser error: unexpected end of string");
@@ -118,16 +122,14 @@ mod tests {
             regex,
             Regex {
                 root: Some(Box::new(RegexOps::Consecutive(
-                    Some(Box::new(RegexOps::Consecutive(
-                        Some(Box::new(RegexOps::Repeat(Some(Box::new(
-                            RegexOps::Either(
-                                Some(Box::new(RegexOps::Symbol('a'))),
-                                Some(Box::new(RegexOps::Symbol('b')))
-                            )
-                        ))))),
-                        Some(Box::new(RegexOps::Symbol('a')))
-                    ))),
-                    Some(Box::new(RegexOps::Symbol('b')))
+                    Box::new(RegexOps::Consecutive(
+                        Box::new(RegexOps::Repeat(Box::new(RegexOps::Either(
+                            Box::new(RegexOps::Symbol('a')),
+                            Box::new(RegexOps::Symbol('b'))
+                        )))),
+                        Box::new(RegexOps::Symbol('a'))
+                    )),
+                    Box::new(RegexOps::Symbol('b'))
                 ))),
             }
         );

@@ -1,13 +1,83 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    ops::Deref,
+};
 
 use super::{AutomatonState, AutomatonTransition, FiniteAutomaton, Regex, RegexEntry, RegexOps};
 
 impl FiniteAutomaton {
     pub fn from_regex(regex: &Regex) -> Self {
-        let nfa = Self::default();
-
-        nfa
+        match regex.root.as_ref() {
+            Some(root) => {
+                let mut nfa = Self::default();
+                nfa.start_state = nfa.new_state();
+                let accept_state = nfa.new_state();
+                nfa.accept_states.insert(accept_state);
+                nfa.traverse_regex(&root, nfa.start_state, accept_state);
+                nfa
+            },
+            None => {
+                Self::default()
+            },
+        }
     }
+
+    fn traverse_regex(
+        &mut self,
+        curr_op: &RegexEntry,
+        start_state: AutomatonState,
+        accept_state: AutomatonState,
+    ) {
+        // Idk why on Earth did i decide to make RegexEnrty na Option, so just unwrap for now
+        match curr_op.deref() {
+            RegexOps::Either(left, right) => {
+                let left_start = self.new_state();
+                let left_accept = self.new_state();
+                self.add_transition(start_state, AutomatonTransition::Epsilon, left_start);
+                self.add_transition(left_accept, AutomatonTransition::Epsilon, accept_state);
+                self.traverse_regex(left, left_start, left_accept);
+
+                let right_start = self.new_state();
+                let right_accept = self.new_state();
+                self.add_transition(start_state, AutomatonTransition::Epsilon, right_start);
+                self.add_transition(right_accept, AutomatonTransition::Epsilon, accept_state);
+                self.traverse_regex(right, right_start, right_accept);
+            }
+            RegexOps::Consecutive(left, right) => {
+                let inbetween = self.new_state();
+                self.traverse_regex(left, start_state, inbetween);
+                self.traverse_regex(right, inbetween, accept_state);
+            }
+            RegexOps::Repeat(what) => {
+                let repeat_start = self.new_state();
+                let repeat_accept = self.new_state();
+                self.add_transition(start_state, AutomatonTransition::Epsilon, repeat_start);
+                self.add_transition(start_state, AutomatonTransition::Epsilon, accept_state);
+                self.add_transition(repeat_accept, AutomatonTransition::Epsilon, accept_state);
+                self.add_transition(repeat_accept, AutomatonTransition::Epsilon, repeat_start);
+                self.traverse_regex(what, repeat_start, repeat_accept);
+            }
+            RegexOps::Symbol(sym) => {
+                self.add_transition(start_state, AutomatonTransition::Symbol(*sym), accept_state);
+            }
+            RegexOps::Epsilon => {
+                self.add_transition(start_state, AutomatonTransition::Epsilon, accept_state);
+            }
+        }
+    }
+
+    fn add_transition(
+        &mut self,
+        src: AutomatonState,
+        trans: AutomatonTransition,
+        dest: AutomatonState,
+    ) {
+        let trans_list = self.transitions.entry(src).or_default();
+        let dest_list = trans_list.entry(trans).or_default();
+        dest_list.insert(dest);
+    }
+
+    pub fn eliminate_epsilon(&mut self) {}
 
     pub fn to_dfa(nfa: &FiniteAutomaton) -> Self {
         if nfa.transitions.is_empty() {
@@ -49,7 +119,7 @@ impl FiniteAutomaton {
                 let nfa_trans = nfa.transitions.get(nfa_state).unwrap();
 
                 for (symbol, nfa_to) in nfa_trans.iter() {
-                    let entry = dfa_nfa_trans.entry(*symbol).or_insert(BTreeSet::default());
+                    let entry = dfa_nfa_trans.entry(*symbol).or_default();
                     entry.extend(nfa_to);
                 }
             }
@@ -66,10 +136,7 @@ impl FiniteAutomaton {
                     }
                 };
 
-                // It is safe to unwrap here because every queued state must have been created
-                // via new_state() which is guaranteed to insert it into transitions list
-                let curr_trans = dfa.transitions.get_mut(&curr_state).unwrap();
-                curr_trans.insert(*symbol, BTreeSet::from([dfa_to]));
+                dfa.add_transition(curr_state, *symbol, dfa_to);
             }
 
             used.insert(curr_state);
@@ -92,7 +159,6 @@ mod tests {
     #[test]
     fn nfa_to_dfa_unit_1() {
         let nfa = FiniteAutomaton {
-            is_full: false,
             start_state: 0,
             accept_states: HashSet::from([2]),
             transitions: BTreeMap::from([
@@ -125,7 +191,6 @@ mod tests {
         assert_eq!(
             dfa,
             FiniteAutomaton {
-                is_full: false,
                 start_state: 0,
                 accept_states: HashSet::from([2]),
                 transitions: BTreeMap::from([
@@ -158,7 +223,6 @@ mod tests {
     #[test]
     fn nfa_to_dfa_unit_2() {
         let nfa = FiniteAutomaton {
-            is_full: false,
             start_state: 0,
             accept_states: HashSet::from([2]),
             transitions: BTreeMap::from([
@@ -185,7 +249,6 @@ mod tests {
         assert_eq!(
             dfa,
             FiniteAutomaton {
-                is_full: false,
                 start_state: 0,
                 accept_states: HashSet::from([2]),
                 transitions: BTreeMap::from([
@@ -218,7 +281,6 @@ mod tests {
     #[test]
     fn nfa_to_dfa_unit_3() {
         let nfa = FiniteAutomaton {
-            is_full: false,
             start_state: 0,
             accept_states: HashSet::from([5]),
             transitions: BTreeMap::from([
@@ -266,7 +328,6 @@ mod tests {
         assert_eq!(
             dfa,
             FiniteAutomaton {
-                is_full: false,
                 start_state: 0,
                 accept_states: HashSet::from([5, 6, 7, 8]),
                 transitions: BTreeMap::from([

@@ -3,7 +3,7 @@ mod regular_expression;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-pub type RegexEntry = Option<Box<RegexOps>>;
+pub type RegexEntry = Box<RegexOps>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegexOps {
@@ -11,11 +11,12 @@ pub enum RegexOps {
     Consecutive(RegexEntry, RegexEntry),
     Repeat(RegexEntry),
     Symbol(char),
+    Epsilon,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Regex {
-    root: RegexEntry,
+    root: Option<RegexEntry>,
 }
 
 impl Default for Regex {
@@ -40,7 +41,6 @@ pub enum AutomatonKind {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FiniteAutomaton {
-    is_full: bool,
     start_state: usize,
     accept_states: HashSet<usize>,
     transitions: BTreeMap<AutomatonState, BTreeMap<AutomatonTransition, BTreeSet<AutomatonState>>>,
