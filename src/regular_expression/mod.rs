@@ -62,7 +62,7 @@ impl RegexParser {
         while let Some(symbol) = self.expr.chars().nth(self.curr_pos) {
             // Only alhabetic characters and left paranthesis are valid options
             if !(symbol.is_alphabetic() || symbol == '(') {
-                self.report_error("unexpected symbol");
+                break;
             }
 
             let right = self.parse_repeat();
@@ -107,10 +107,6 @@ impl RegexParser {
                 Box::new(RegexOps::Epsilon)
             }
             Some(symbol) => {
-                if !symbol.is_alphanumeric() {
-                    self.report_error("unexpected symbol");
-                }
-
                 self.curr_pos += 1;
                 Box::new(RegexOps::Symbol(symbol))
             }
@@ -139,7 +135,7 @@ mod tests {
 
     #[test]
     fn from_string_unit_1() {
-        let regex = Regex::from_string("(a + b)*ab");
+        let regex = Regex::from_string("(a|b)*ab");
 
         assert_eq!(
             regex,

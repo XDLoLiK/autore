@@ -1,7 +1,7 @@
 mod finite_automaton;
 mod regular_expression;
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub type RegexEntry = Box<RegexOps>;
 
@@ -26,6 +26,7 @@ impl Default for Regex {
 }
 
 pub type AutomatonState = usize;
+pub type AutomatonTransitionList = BTreeMap<AutomatonTransition, BTreeSet<AutomatonState>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AutomatonTransition {
@@ -33,15 +34,10 @@ pub enum AutomatonTransition {
     Symbol(char),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AutomatonKind {
-    Dfa,
-    Nfa,
-}
-
+// Use BTree here instead of Hash to get determenistic results every time
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FiniteAutomaton {
-    start_state: usize,
-    accept_states: HashSet<usize>,
-    transitions: BTreeMap<AutomatonState, BTreeMap<AutomatonTransition, BTreeSet<AutomatonState>>>,
+    start_states: BTreeSet<AutomatonState>,
+    accept_states: BTreeSet<AutomatonState>,
+    transitions: BTreeMap<AutomatonState, AutomatonTransitionList>,
 }

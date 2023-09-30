@@ -6,3 +6,4 @@ edition = "2021"
 
 [dependencies]
 colored = "2.0.4"
+tabbycat = "0.1.3"
