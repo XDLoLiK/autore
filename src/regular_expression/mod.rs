@@ -3,6 +3,8 @@ use std::{
     io::{BufReader, Read},
 };
 
+use colored::Colorize;
+
 use super::{Regex, RegexEntry, RegexOps};
 
 #[derive(Debug, Default, Clone)]
@@ -45,7 +47,7 @@ impl RegexParser {
     fn parse_either(&mut self) -> RegexEntry {
         let mut left = self.parse_consecutive();
 
-        while let Some('+') = self.expr.chars().nth(self.curr_pos) {
+        while let Some('|') = self.expr.chars().nth(self.curr_pos) {
             self.curr_pos += 1;
             let right = self.parse_consecutive();
             left = Box::new(RegexOps::Either(left, right));
@@ -58,8 +60,9 @@ impl RegexParser {
         let mut left = self.parse_repeat();
 
         while let Some(symbol) = self.expr.chars().nth(self.curr_pos) {
-            if !symbol.is_alphabetic() {
-                break;
+            // Only alhabetic characters and left paranthesis are valid options
+            if !(symbol.is_alphabetic() || symbol == '(') {
+                self.report_error("unexpected symbol");
             }
 
             let right = self.parse_repeat();
@@ -85,8 +88,12 @@ impl RegexParser {
             Some('(') => {
                 self.curr_pos += 1;
                 let ret = self.parse_either();
-                assert_eq!(self.expr.chars().nth(self.curr_pos), Some(')'));
-                self.curr_pos += 1;
+
+                match self.expr.chars().nth(self.curr_pos) {
+                    Some(')') => self.curr_pos += 1,
+                    _ => self.report_error("')' expected"),
+                }
+
                 ret
             }
             _ => self.parse_symbol(),
@@ -100,13 +107,29 @@ impl RegexParser {
                 Box::new(RegexOps::Epsilon)
             }
             Some(symbol) => {
+                if !symbol.is_alphanumeric() {
+                    self.report_error("unexpected symbol");
+                }
+
                 self.curr_pos += 1;
                 Box::new(RegexOps::Symbol(symbol))
             }
             None => {
-                panic!("Parser error: unexpected end of string");
+                self.report_error("unexpected end of the expression");
             }
         }
+    }
+
+    fn report_error(&self, error_msg: &str) -> ! {
+        let expr_str = self.expr.as_str();
+        let curr_pos = self.curr_pos;
+        panic!(
+            "Parser error ({}): {}{}{}",
+            error_msg,
+            &expr_str[..curr_pos],
+            &expr_str[curr_pos..(curr_pos + 1)].red(),
+            &expr_str[(curr_pos + 1)..]
+        );
     }
 }
 

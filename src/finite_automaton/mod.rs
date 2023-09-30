@@ -15,10 +15,8 @@ impl FiniteAutomaton {
                 nfa.accept_states.insert(accept_state);
                 nfa.traverse_regex(&root, nfa.start_state, accept_state);
                 nfa
-            },
-            None => {
-                Self::default()
-            },
+            }
+            None => Self::default(),
         }
     }
 
@@ -28,7 +26,6 @@ impl FiniteAutomaton {
         start_state: AutomatonState,
         accept_state: AutomatonState,
     ) {
-        // Idk why on Earth did i decide to make RegexEnrty na Option, so just unwrap for now
         match curr_op.deref() {
             RegexOps::Either(left, right) => {
                 let left_start = self.new_state();
@@ -77,7 +74,9 @@ impl FiniteAutomaton {
         dest_list.insert(dest);
     }
 
-    pub fn eliminate_epsilon(&mut self) {}
+    pub fn eliminate_epsilon(&mut self) {
+        
+    }
 
     pub fn to_dfa(nfa: &FiniteAutomaton) -> Self {
         if nfa.transitions.is_empty() {
