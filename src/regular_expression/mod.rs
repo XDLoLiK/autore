@@ -75,9 +75,15 @@ impl RegexParser {
     fn parse_repeat(&mut self) -> RegexEntry {
         let mut ret = self.parse_priority();
 
-        while let Some('*') = self.expr.chars().nth(self.curr_pos) {
+        while let Some(symbol) = self.expr.chars().nth(self.curr_pos) {
+            match symbol {
+                '*' => ret = Box::new(RegexOps::NoneOrMore(ret)),
+                '?' => ret = Box::new(RegexOps::NoneOrOnce(ret)),
+                '+' => ret = Box::new(RegexOps::OnceOrMore(ret)),
+                _ => break,
+            }
+
             self.curr_pos += 1;
-            ret = Box::new(RegexOps::Repeat(ret));
         }
 
         ret
@@ -142,7 +148,7 @@ mod tests {
             Regex {
                 root: Some(Box::new(RegexOps::Consecutive(
                     Box::new(RegexOps::Consecutive(
-                        Box::new(RegexOps::Repeat(Box::new(RegexOps::Either(
+                        Box::new(RegexOps::NoneOrMore(Box::new(RegexOps::Either(
                             Box::new(RegexOps::Symbol('a')),
                             Box::new(RegexOps::Symbol('b'))
                         )))),

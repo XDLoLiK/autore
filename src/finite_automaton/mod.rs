@@ -10,8 +10,8 @@ use tabbycat::attributes::*;
 use tabbycat::{AttrList, Edge, GraphBuilder, GraphType, Identity, StmtList};
 
 use super::{
-    AutomatonState, AutomatonTransition, AutomatonTransitionList, FiniteAutomaton, Regex,
-    RegexEntry, RegexOps,
+    AutomatonKind, AutomatonState, AutomatonTransition, AutomatonTransitionList, FiniteAutomaton,
+    Regex, RegexEntry, RegexOps,
 };
 
 impl FiniteAutomaton {
@@ -55,11 +55,27 @@ impl FiniteAutomaton {
                 self.traverse_regex(left, start_state, inbetween);
                 self.traverse_regex(right, inbetween, accept_state);
             }
-            RegexOps::Repeat(what) => {
+            RegexOps::NoneOrMore(what) => {
                 let repeat_start = self.add_state();
                 let repeat_accept = self.add_state();
                 self.add_transition(start_state, AutomatonTransition::Epsilon, repeat_start);
                 self.add_transition(start_state, AutomatonTransition::Epsilon, accept_state);
+                self.add_transition(repeat_accept, AutomatonTransition::Epsilon, accept_state);
+                self.add_transition(repeat_accept, AutomatonTransition::Epsilon, repeat_start);
+                self.traverse_regex(what, repeat_start, repeat_accept);
+            }
+            RegexOps::NoneOrOnce(what) => {
+                let repeat_start = self.add_state();
+                let repeat_accept = self.add_state();
+                self.add_transition(start_state, AutomatonTransition::Epsilon, repeat_start);
+                self.add_transition(start_state, AutomatonTransition::Epsilon, accept_state);
+                self.add_transition(repeat_accept, AutomatonTransition::Epsilon, accept_state);
+                self.traverse_regex(what, repeat_start, repeat_accept);
+            }
+            RegexOps::OnceOrMore(what) => {
+                let repeat_start = self.add_state();
+                let repeat_accept = self.add_state();
+                self.add_transition(start_state, AutomatonTransition::Epsilon, repeat_start);
                 self.add_transition(repeat_accept, AutomatonTransition::Epsilon, accept_state);
                 self.add_transition(repeat_accept, AutomatonTransition::Epsilon, repeat_start);
                 self.traverse_regex(what, repeat_start, repeat_accept);
@@ -87,7 +103,13 @@ impl FiniteAutomaton {
             }
         }
 
-        Self::floyd_warshall(self.transitions.len(), &mut closure_matrix);
+        let mut states_list = BTreeSet::<AutomatonState>::new();
+
+        for (curr_state, _) in self.transitions.iter() {
+            states_list.insert(*curr_state);
+        }
+
+        Self::floyd_warshall(&states_list, &mut closure_matrix);
 
         for (from, epsilon_trans) in closure_matrix.iter() {
             for (to, reachable) in epsilon_trans.iter() {
@@ -134,7 +156,13 @@ impl FiniteAutomaton {
             }
         }
 
-        self.transitions.append(&mut add_trans);
+        for (curr_state, transitions) in add_trans.iter() {
+            for (symbol, dest_list) in transitions.iter() {
+                for dest_state in dest_list.iter() {
+                    self.add_transition(*curr_state, *symbol, *dest_state);
+                }
+            }
+        }
 
         // Step 4: Remove all the epsilon transitions from the automaton
         for (_, transitions) in self.transitions.iter_mut() {
@@ -143,19 +171,20 @@ impl FiniteAutomaton {
 
         // Step 5: Remove the dead states that could have appeared
         self.eliminate_dead();
+        self.kind = AutomatonKind::NfaWithoutEpsilon;
     }
 
     fn floyd_warshall(
-        size: usize,
+        states: &BTreeSet<AutomatonState>,
         matrix: &mut BTreeMap<AutomatonState, BTreeMap<AutomatonState, bool>>,
     ) {
-        for k in 0..size {
-            for i in 0..size {
-                let matrix_i_k = *matrix.entry(i).or_default().entry(k).or_default();
+        for k in states.iter() {
+            for i in states.iter() {
+                let matrix_i_k = *matrix.entry(*i).or_default().entry(*k).or_default();
 
-                for j in 0..size {
-                    let matrix_k_j = *matrix.entry(k).or_default().entry(j).or_default();
-                    let entry_i_j = matrix.entry(i).or_default().entry(j).or_default();
+                for j in states.iter() {
+                    let matrix_k_j = *matrix.entry(*k).or_default().entry(*j).or_default();
+                    let entry_i_j = matrix.entry(*i).or_default().entry(*j).or_default();
                     *entry_i_j = *entry_i_j | (matrix_i_k & matrix_k_j);
                 }
             }
@@ -163,28 +192,33 @@ impl FiniteAutomaton {
     }
 
     pub fn eliminate_dead(&mut self) {
-        let states_nr = self.transitions.len();
-        let mut ref_count = vec![0_usize; states_nr];
+        let mut ref_count = BTreeMap::<AutomatonState, usize>::default();
 
         for (_, transitions) in self.transitions.iter() {
             for (_, states) in transitions.iter() {
                 for state in states.iter() {
-                    ref_count[*state] += 1;
+                    *ref_count.entry(*state).or_default() += 1;
                 }
             }
         }
 
-        // We never want to eliminate state 0 here because
-        // we would then leave no start states at all
-        for state in 1..ref_count.len() {
-            if ref_count[state] == 0 {
-                self.remove_state(state);
+        let mut states_list = BTreeSet::<AutomatonState>::new();
+
+        for (curr_state, _) in self.transitions.iter() {
+            states_list.insert(*curr_state);
+        }
+
+        for state in states_list.iter() {
+            // We never want to eliminate state 0 here because
+            // we would then leave no start states at all
+            if *state != 0 && *ref_count.entry(*state).or_default() == 0 {
+                self.remove_state(*state);
             }
         }
     }
 
     pub fn to_dfa(nfa: &FiniteAutomaton) -> Self {
-        if nfa.transitions.is_empty() {
+        if nfa.transitions.is_empty() || nfa.kind != AutomatonKind::NfaWithoutEpsilon {
             return Self::default();
         }
 
@@ -247,7 +281,57 @@ impl FiniteAutomaton {
             used.insert(curr_state);
         }
 
+        dfa.kind = AutomatonKind::Dfa;
         dfa
+    }
+
+    pub fn to_full(&mut self) {
+        if self.kind != AutomatonKind::Dfa {
+            return;
+        }
+
+        let mut alphabet = BTreeSet::<AutomatonTransition>::default();
+
+        for (_, transitions) in self.transitions.iter() {
+            for (symbol, _) in transitions.iter() {
+                alphabet.insert(*symbol);
+            }
+        }
+
+        let drain = self.add_state();
+        let mut add_trans = BTreeMap::<AutomatonState, AutomatonTransitionList>::default();
+
+        for (state, transitions) in self.transitions.iter() {
+            for symbol in alphabet.iter() {
+                if let None = transitions.get(symbol) {
+                    Self::list_add_transition(&mut add_trans, *state, *symbol, drain);
+                }
+            }
+        }
+
+        for (curr_state, transitions) in add_trans.iter() {
+            for (symbol, dest_list) in transitions.iter() {
+                for dest_state in dest_list.iter() {
+                    self.add_transition(*curr_state, *symbol, *dest_state);
+                }
+            }
+        }
+
+        self.kind = AutomatonKind::FullDfa;
+    }
+
+    pub fn to_complement(&mut self) {
+        if self.kind != AutomatonKind::FullDfa {
+            return;
+        }
+
+        for (curr_state, _) in self.transitions.iter() {
+            if self.accept_states.contains(curr_state) {
+                self.accept_states.remove(curr_state);
+            } else {
+                self.accept_states.insert(*curr_state);
+            }
+        }
     }
 
     pub fn accepts_word(&self, word: &str) -> bool {
@@ -369,7 +453,8 @@ impl FiniteAutomaton {
     }
 
     fn add_state(&mut self) -> AutomatonState {
-        let new_state = self.transitions.len();
+        let new_state = self.last_state;
+        self.last_state += 1;
         self.transitions.insert(new_state, BTreeMap::default());
         new_state
     }
@@ -388,6 +473,8 @@ mod tests {
     #[test]
     fn nfa_to_dfa_unit_1() {
         let nfa = FiniteAutomaton {
+            last_state: 3,
+            kind: AutomatonKind::NfaWithoutEpsilon,
             start_states: BTreeSet::from([0]),
             accept_states: BTreeSet::from([2]),
             transitions: BTreeMap::from([
@@ -417,41 +504,41 @@ mod tests {
 
         let dfa = FiniteAutomaton::to_dfa(&nfa);
 
+        assert_eq!(dfa.start_states, BTreeSet::from([0]));
+        assert_eq!(dfa.accept_states, BTreeSet::from([2]));
         assert_eq!(
-            dfa,
-            FiniteAutomaton {
-                start_states: BTreeSet::from([0]),
-                accept_states: BTreeSet::from([2]),
-                transitions: BTreeMap::from([
-                    (
-                        0,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                    (
-                        1,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                    (
-                        2,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
-                        ]),
-                    ),
-                ]),
-            }
-        );
+            dfa.transitions,
+            BTreeMap::from([
+                (
+                    0,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+                (
+                    1,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+                (
+                    2,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
+                    ]),
+                ),
+            ])
+        )
     }
 
     #[test]
     fn nfa_to_dfa_unit_2() {
         let nfa = FiniteAutomaton {
+            last_state: 3,
+            kind: AutomatonKind::NfaWithoutEpsilon,
             start_states: BTreeSet::from([0]),
             accept_states: BTreeSet::from([2]),
             transitions: BTreeMap::from([
@@ -475,41 +562,41 @@ mod tests {
 
         let dfa = FiniteAutomaton::to_dfa(&nfa);
 
+        assert_eq!(dfa.start_states, BTreeSet::from([0]));
+        assert_eq!(dfa.accept_states, BTreeSet::from([2]));
         assert_eq!(
-            dfa,
-            FiniteAutomaton {
-                start_states: BTreeSet::from([0]),
-                accept_states: BTreeSet::from([2]),
-                transitions: BTreeMap::from([
-                    (
-                        0,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                    (
-                        1,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                    (
-                        2,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                ]),
-            }
+            dfa.transitions,
+            BTreeMap::from([
+                (
+                    0,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+                (
+                    1,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([2])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+                (
+                    2,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([0])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+            ])
         );
     }
 
     #[test]
     fn nfa_to_dfa_unit_3() {
         let nfa = FiniteAutomaton {
+            last_state: 6,
+            kind: AutomatonKind::NfaWithoutEpsilon,
             start_states: BTreeSet::from([0]),
             accept_states: BTreeSet::from([5]),
             transitions: BTreeMap::from([
@@ -554,77 +641,75 @@ mod tests {
 
         let dfa = FiniteAutomaton::to_dfa(&nfa);
 
+        assert_eq!(dfa.start_states, BTreeSet::from([0]));
+        assert_eq!(dfa.accept_states, BTreeSet::from([5, 6, 7, 8]));
         assert_eq!(
-            dfa,
-            FiniteAutomaton {
-                start_states: BTreeSet::from([0]),
-                accept_states: BTreeSet::from([5, 6, 7, 8]),
-                transitions: BTreeMap::from([
-                    (
-                        0,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
-                        ]),
-                    ),
-                    (
-                        1,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
-                        ]),
-                    ),
-                    (
-                        2,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([3])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
-                        ]),
-                    ),
-                    (
-                        3,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([4]))
-                        ]),
-                    ),
-                    (
-                        4,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
-                        ]),
-                    ),
-                    (
-                        5,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([7])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([8]))
-                        ]),
-                    ),
-                    (
-                        6,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
-                        ]),
-                    ),
-                    (
-                        7,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([7])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
-                        ]),
-                    ),
-                    (
-                        8,
-                        BTreeMap::from([
-                            (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
-                            (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
-                        ]),
-                    ),
-                ]),
-            }
+            dfa.transitions,
+            BTreeMap::from([
+                (
+                    0,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([1]))
+                    ]),
+                ),
+                (
+                    1,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
+                    ]),
+                ),
+                (
+                    2,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([3])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([2]))
+                    ]),
+                ),
+                (
+                    3,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([1])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([4]))
+                    ]),
+                ),
+                (
+                    4,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
+                    ]),
+                ),
+                (
+                    5,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([7])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([8]))
+                    ]),
+                ),
+                (
+                    6,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
+                    ]),
+                ),
+                (
+                    7,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([7])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
+                    ]),
+                ),
+                (
+                    8,
+                    BTreeMap::from([
+                        (AutomatonTransition::Symbol('a'), BTreeSet::from([5])),
+                        (AutomatonTransition::Symbol('b'), BTreeSet::from([6]))
+                    ]),
+                ),
+            ])
         );
     }
 }

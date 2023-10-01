@@ -5,10 +5,16 @@ fn main() {
     println!("{:#?}", regex);
 
     let mut nfa = FiniteAutomaton::from_regex(&regex);
-    nfa.dump("nfa.dot");
+    nfa.dump("img/nfa.dot");
     nfa.eliminate_epsilon();
-    nfa.dump("nfa_without_epsilon.dot");
+    nfa.dump("img/nfa_without_epsilon.dot");
 
-    let dfa = FiniteAutomaton::to_dfa(&nfa);
-    dfa.dump("dfa.dot");
+    let mut dfa = FiniteAutomaton::to_dfa(&nfa);
+    dfa.dump("img/dfa.dot");
+
+    dfa.to_full();
+    dfa.dump("img/dfa_full.dot");
+
+    dfa.to_complement();
+    dfa.dump("img/dfa_complement.dot");
 }

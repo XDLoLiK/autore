@@ -9,7 +9,9 @@ pub type RegexEntry = Box<RegexOps>;
 pub enum RegexOps {
     Either(RegexEntry, RegexEntry),
     Consecutive(RegexEntry, RegexEntry),
-    Repeat(RegexEntry),
+    NoneOrMore(RegexEntry),
+    NoneOrOnce(RegexEntry),
+    OnceOrMore(RegexEntry),
     Symbol(char),
     Epsilon,
 }
@@ -34,9 +36,25 @@ pub enum AutomatonTransition {
     Symbol(char),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AutomatonKind {
+    Nfa,
+    NfaWithoutEpsilon,
+    Dfa,
+    FullDfa,
+}
+
+impl Default for AutomatonKind {
+    fn default() -> Self {
+        AutomatonKind::Nfa
+    }
+}
+
 // Use BTree here instead of Hash to get determenistic results every time
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub struct FiniteAutomaton {
+    last_state: AutomatonState,
+    kind: AutomatonKind,
     start_states: BTreeSet<AutomatonState>,
     accept_states: BTreeSet<AutomatonState>,
     transitions: BTreeMap<AutomatonState, AutomatonTransitionList>,
