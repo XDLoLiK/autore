@@ -1,5 +1,5 @@
 # autore
-A tiny library meant to convert regular expressions to different kinds of finite automatons and vise versa.
+A tiny library for converting regular expressions to different kinds of finite automatons and vise versa
 
 # dependecies
 - make
