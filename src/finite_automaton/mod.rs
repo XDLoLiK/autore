@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Result, Write},
     ops::Deref,
     process::Command,
 };
@@ -10,8 +10,8 @@ use tabbycat::attributes::*;
 use tabbycat::{AttrList, AttrType, Edge, GraphBuilder, GraphType, Identity, StmtList};
 
 use super::{
-    AutomatonKind, AutomatonState, AutomatonTransition, AutomatonTransitionList, FiniteAutomaton,
-    Regex, RegexEntry, RegexOps,
+    AutomatonKind, AutomatonState, AutomatonTransition, FiniteAutomaton, Regex, RegexEntry,
+    RegexOps,
 };
 
 impl FiniteAutomaton {
@@ -103,13 +103,7 @@ impl FiniteAutomaton {
             }
         }
 
-        let mut states_list = BTreeSet::<AutomatonState>::new();
-
-        for (curr_state, _) in self.transitions.iter() {
-            states_list.insert(*curr_state);
-        }
-
-        Self::floyd_warshall(&states_list, &mut closure_matrix);
+        self.floyd_warshall(&mut closure_matrix);
 
         for (from, epsilon_trans) in closure_matrix.iter() {
             for (to, reachable) in epsilon_trans.iter() {
@@ -131,35 +125,20 @@ impl FiniteAutomaton {
         }
 
         // Step 3: Add (u - Epsilon - v - Symbol - w) edges
-        let mut add_trans = BTreeMap::<AutomatonState, AutomatonTransitionList>::default();
+        let cloned_transitions = self.transitions.clone();
 
-        for (curr_state, transitions) in self.transitions.iter() {
+        for (curr_state, transitions) in cloned_transitions.iter() {
             if let Some(epsilon_trans) = transitions.get(&AutomatonTransition::Epsilon) {
                 for epsilon_state in epsilon_trans.iter() {
-                    // It is safe to unwrap here because every state must have been created via
+                    // SAFETY: every state must have been created via
                     // new_state() and thus is present in transitions map
-                    let next_trans = self.transitions.get(epsilon_state).unwrap();
+                    let next_trans = cloned_transitions.get(epsilon_state).unwrap();
 
-                    for (symbol, next_dest) in next_trans.iter() {
-                        if *symbol != AutomatonTransition::Epsilon {
-                            for dest_state in next_dest.iter() {
-                                Self::list_add_transition(
-                                    &mut add_trans,
-                                    *curr_state,
-                                    *symbol,
-                                    *dest_state,
-                                );
-                            }
+                    for (symbol, dest_list) in next_trans.iter() {
+                        for dest_state in dest_list.iter() {
+                            self.add_transition(*curr_state, *symbol, *dest_state);
                         }
                     }
-                }
-            }
-        }
-
-        for (curr_state, transitions) in add_trans.iter() {
-            for (symbol, dest_list) in transitions.iter() {
-                for dest_state in dest_list.iter() {
-                    self.add_transition(*curr_state, *symbol, *dest_state);
                 }
             }
         }
@@ -175,14 +154,13 @@ impl FiniteAutomaton {
     }
 
     fn floyd_warshall(
-        states: &BTreeSet<AutomatonState>,
+        &self,
         matrix: &mut BTreeMap<AutomatonState, BTreeMap<AutomatonState, bool>>,
     ) {
-        for k in states.iter() {
-            for i in states.iter() {
-                let matrix_i_k = *matrix.entry(*i).or_default().entry(*k).or_default();
-
-                for j in states.iter() {
+        for (k, _) in self.transitions.iter() {
+            for (i, _) in self.transitions.iter() {
+                for (j, _) in self.transitions.iter() {
+                    let matrix_i_k = *matrix.entry(*i).or_default().entry(*k).or_default();
                     let matrix_k_j = *matrix.entry(*k).or_default().entry(*j).or_default();
                     let entry_i_j = matrix.entry(*i).or_default().entry(*j).or_default();
                     *entry_i_j = *entry_i_j | (matrix_i_k & matrix_k_j);
@@ -202,13 +180,7 @@ impl FiniteAutomaton {
             }
         }
 
-        let mut states_list = BTreeSet::<AutomatonState>::new();
-
-        for (curr_state, _) in self.transitions.iter() {
-            states_list.insert(*curr_state);
-        }
-
-        for state in states_list.iter() {
+        for (state, _) in self.transitions.clone().iter() {
             // We never want to eliminate state 0 here because
             // we would then leave no start states at all
             if *state != 0 && *ref_count.entry(*state).or_default() == 0 {
@@ -235,14 +207,14 @@ impl FiniteAutomaton {
         reverse_mapping.insert(nfa.start_states.clone(), start_state);
 
         while !queue.is_empty() {
-            // It is safe to unwrap here as queue is guaranteed not to be empty
+            // SAFETY: queue is guaranteed not to be empty
             let curr_state = queue.pop_front().unwrap();
 
             if used.contains(&curr_state) {
                 continue;
             }
 
-            // It is safe to unwrap here because every queued state is mapped to some nfa states
+            // SAFETY: every queued state is mapped to some nfa states
             let curr_mapped_to = mapping.get(&curr_state).unwrap();
             let mut dfa_nfa_trans =
                 BTreeMap::<AutomatonTransition, BTreeSet<AutomatonState>>::new();
@@ -254,7 +226,7 @@ impl FiniteAutomaton {
                     dfa.accept_states.insert(curr_state);
                 }
 
-                // It is safe to unwrap here because nfa_state is guaranteed to be in nfa
+                // SAFETY: nfa_state is guaranteed to be in nfa
                 let nfa_trans = nfa.transitions.get(nfa_state).unwrap();
 
                 for (symbol, nfa_to) in nfa_trans.iter() {
@@ -299,20 +271,11 @@ impl FiniteAutomaton {
         }
 
         let drain = self.add_state();
-        let mut add_trans = BTreeMap::<AutomatonState, AutomatonTransitionList>::default();
 
-        for (state, transitions) in self.transitions.iter() {
+        for (state, transitions) in self.transitions.clone().iter() {
             for symbol in alphabet.iter() {
                 if let None = transitions.get(symbol) {
-                    Self::list_add_transition(&mut add_trans, *state, *symbol, drain);
-                }
-            }
-        }
-
-        for (curr_state, transitions) in add_trans.iter() {
-            for (symbol, dest_list) in transitions.iter() {
-                for dest_state in dest_list.iter() {
-                    self.add_transition(*curr_state, *symbol, *dest_state);
+                    self.add_transition(*state, *symbol, drain);
                 }
             }
         }
@@ -343,7 +306,7 @@ impl FiniteAutomaton {
             let mut next_states = BTreeSet::<AutomatonState>::default();
 
             for state in curr_states.iter() {
-                // It is safe to unwrap here because every state must have been created via
+                // SAFETY: every state must have been created via
                 // new_state() and thus is present in transitions map
                 let curr_trans = self.transitions.get(state).unwrap();
 
@@ -363,9 +326,9 @@ impl FiniteAutomaton {
         accepts
     }
 
-    pub fn dump(&self, file_name: &str) {
-        // It is safe to unwrap here because G is known to be a valid lexem and
-        // all the required fields of the graph are initialized
+    pub fn dump(&self, file_name: &str) -> Result<()> {
+        // SAFETY: G is known to be a valid lexem
+        // SAFETY: all the required fields of the graph are initialized
         let graph = GraphBuilder::default()
             .graph_type(GraphType::DiGraph)
             .strict(false)
@@ -374,10 +337,9 @@ impl FiniteAutomaton {
             .build()
             .unwrap();
 
-        // It's not safe to unwrap here but we don't care if anything goes wrong
-        let file = File::create(file_name).unwrap();
+        let file = File::create(file_name)?;
         let mut writer = BufWriter::new(file);
-        writeln!(&mut writer, "{}", graph).unwrap();
+        writeln!(&mut writer, "{}", graph)?;
         let png_file_name = file_name.to_owned() + ".png";
 
         // FIXME: command doesn't execute properly
@@ -390,6 +352,8 @@ impl FiniteAutomaton {
                 .output()
                 .expect("Failed to execute the process");
         }
+
+        Ok(())
     }
 
     fn build_graph(&self) -> StmtList {
@@ -456,16 +420,7 @@ impl FiniteAutomaton {
         trans: AutomatonTransition,
         dest: AutomatonState,
     ) {
-        Self::list_add_transition(&mut self.transitions, src, trans, dest);
-    }
-
-    fn list_add_transition(
-        list: &mut BTreeMap<AutomatonState, AutomatonTransitionList>,
-        src: AutomatonState,
-        trans: AutomatonTransition,
-        dest: AutomatonState,
-    ) {
-        let trans_list = list.entry(src).or_default();
+        let trans_list = self.transitions.entry(src).or_default();
         let dest_list = trans_list.entry(trans).or_default();
         dest_list.insert(dest);
     }
