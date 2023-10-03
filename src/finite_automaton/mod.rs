@@ -7,7 +7,7 @@ use std::{
 };
 
 use tabbycat::attributes::*;
-use tabbycat::{AttrList, Edge, GraphBuilder, GraphType, Identity, StmtList};
+use tabbycat::{AttrList, AttrType, Edge, GraphBuilder, GraphType, Identity, StmtList};
 
 use super::{
     AutomatonKind, AutomatonState, AutomatonTransition, AutomatonTransitionList, FiniteAutomaton,
@@ -393,22 +393,41 @@ impl FiniteAutomaton {
     }
 
     fn build_graph(&self) -> StmtList {
-        let mut stmt_list = StmtList::default();
+        let mut stmt_list = StmtList::new();
 
         // Yes I have to loop all the states in advance in order to get the colors
         // right for them, because graphviz goes mad otherwise
         for (from, _) in self.transitions.iter() {
-            let col = match self.start_states.contains(from) {
-                true => color(Color::Green),
-                false => match self.accept_states.contains(from) {
-                    true => color(Color::Red),
-                    false => color(Color::Blue),
-                },
+            let col = match self.accept_states.contains(from) {
+                true => color(Color::Red),
+                false => color(Color::Blue),
             };
 
             stmt_list = stmt_list
-                .add_attr(tabbycat::AttrType::Node, AttrList::default().add_pair(col))
+                .add_attr(AttrType::Node, AttrList::new().add_pair(col))
                 .add_node(Identity::Usize(*from), None, None);
+        }
+
+        // An invisible mock state to draw arrows from to the start states
+        let mock_state = -1;
+
+        stmt_list = stmt_list
+            .add_attr(
+                AttrType::Node,
+                AttrList::new()
+                    .add_pair(shape(Shape::None))
+                    .add_pair(label(""))
+                    .add_pair(height(0_f64))
+                    .add_pair(width(0_f64)),
+            )
+            .add_node(Identity::ISize(mock_state), None, None);
+
+        // Add arrows to the start states
+        for state in self.start_states.iter() {
+            stmt_list = stmt_list.add_edge(
+                Edge::head_node(Identity::ISize(mock_state), None)
+                    .arrow_to_node(Identity::Usize(*state), None),
+            );
         }
 
         for (from, transitions) in self.transitions.iter() {
@@ -422,7 +441,6 @@ impl FiniteAutomaton {
                     stmt_list = stmt_list.add_edge(
                         Edge::head_node(Identity::Usize(*from), None)
                             .arrow_to_node(Identity::Usize(*to), None)
-                            .add_attrpair(arrowhead(ArrowShape::Diamond))
                             .add_attrpair(label(char::to_string(&symbol))),
                     );
                 }
