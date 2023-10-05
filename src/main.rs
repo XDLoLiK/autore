@@ -1,8 +1,6 @@
-use std::io::Result;
-
 use autore::{FiniteAutomaton, Regex};
 
-fn main() -> Result<()> {
+fn main() -> std::io::Result<()> {
     let regex = Regex::from_string("a((ba)*a(ab)* | a)*");
     println!("{:#?}", regex);
 
@@ -19,6 +17,9 @@ fn main() -> Result<()> {
 
     dfa.to_complement();
     dfa.dump("img/dfa_complement.dot")?;
+
+    // dfa.to_minimal();
+    // dfa.dump("img/dfa_minimal.dot")?;
 
     Ok(())
 }

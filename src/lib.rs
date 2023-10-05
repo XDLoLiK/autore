@@ -29,6 +29,7 @@ impl Default for Regex {
 
 pub type AutomatonState = usize;
 pub type AutomatonTransitionList = BTreeMap<AutomatonTransition, BTreeSet<AutomatonState>>;
+pub type AutomatonAlphabet = BTreeSet<AutomatonTransition>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AutomatonTransition {
@@ -36,25 +37,10 @@ pub enum AutomatonTransition {
     Symbol(char),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AutomatonKind {
-    Nfa,
-    NfaWithoutEpsilon,
-    Dfa,
-    FullDfa,
-}
-
-impl Default for AutomatonKind {
-    fn default() -> Self {
-        AutomatonKind::Nfa
-    }
-}
-
 // Use BTree here instead of Hash to get determenistic results every time
 #[derive(Debug, Default, Clone)]
 pub struct FiniteAutomaton {
     last_state: AutomatonState,
-    kind: AutomatonKind,
     start_states: BTreeSet<AutomatonState>,
     accept_states: BTreeSet<AutomatonState>,
     transitions: BTreeMap<AutomatonState, AutomatonTransitionList>,
