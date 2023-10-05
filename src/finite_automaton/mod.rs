@@ -238,7 +238,7 @@ impl FiniteAutomaton {
 
             // Collect info about (dfa_state - char - nfa_states) transitions
             // in order to later convert it into (dfa_state - char - dfa_state) transitions
-            for nfa_state in curr_mapped_to.iter() {
+            curr_mapped_to.iter().for_each(|nfa_state| {
                 if nfa.accept_states.contains(nfa_state) {
                     dfa.accept_states.insert(curr_state);
                 }
@@ -246,13 +246,15 @@ impl FiniteAutomaton {
                 // SAFETY: nfa_state is guaranteed to be in nfa
                 let nfa_trans = nfa.transitions.get(nfa_state).unwrap();
 
-                for (symbol, nfa_to) in nfa_trans.iter() {
-                    let entry = dfa_nfa_trans.entry(*symbol).or_default();
-                    entry.extend(nfa_to.iter());
-                }
-            }
+                nfa_trans.iter().for_each(|(symbol, nfa_to)| {
+                    dfa_nfa_trans
+                        .entry(*symbol)
+                        .or_default()
+                        .extend(nfa_to.iter());
+                });
+            });
 
-            for (symbol, nfa_to) in dfa_nfa_trans.iter() {
+            dfa_nfa_trans.iter().for_each(|(symbol, nfa_to)| {
                 let dfa_to = match reverse_mapping.get(&nfa_to) {
                     Some(mapped_dfa) => *mapped_dfa,
                     None => {
@@ -265,7 +267,7 @@ impl FiniteAutomaton {
                 };
 
                 dfa.add_transition(curr_state, *symbol, dfa_to);
-            }
+            });
 
             used.insert(curr_state);
         }
@@ -438,14 +440,13 @@ impl FiniteAutomaton {
         let mut writer = BufWriter::new(file);
         writeln!(&mut writer, "{}", graph)?;
 
-        // FIXME: command doesn't execute properly
         let png_file_name = file_name.to_owned() + ".png";
         Command::new("dot")
             .arg("-Tpng")
             .arg(file_name)
             .arg("-o")
             .arg(png_file_name)
-            .output()?;
+            .spawn()?;
 
         Ok(())
     }
@@ -455,15 +456,15 @@ impl FiniteAutomaton {
 
         // Yes I have to loop all the states in advance in order to get the colors
         // right for them, because graphviz goes mad otherwise
-        for (from, _) in self.transitions.iter() {
-            let col = match self.accept_states.contains(from) {
+        for state in self.transitions.keys() {
+            let col = match self.accept_states.contains(state) {
                 true => color(Color::Red),
                 false => color(Color::Blue),
             };
 
             stmt_list = stmt_list
                 .add_attr(AttrType::Node, AttrList::new().add_pair(col))
-                .add_node(Identity::Usize(*from), None, None);
+                .add_node(Identity::Usize(*state), None, None);
         }
 
         // An invisible mock state to draw arrows from to the start states
