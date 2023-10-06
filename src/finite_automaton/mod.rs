@@ -425,7 +425,6 @@ impl FiniteAutomaton {
 
     pub fn accepts_word(&self, word: &str) -> bool {
         let word = word.to_string();
-        let mut accepts = true;
         let mut curr_states = self.start_states.clone();
 
         for sym in word.chars() {
@@ -442,14 +441,17 @@ impl FiniteAutomaton {
             });
 
             if next_states.is_empty() {
-                accepts = false;
-                break;
+                return false;
             }
 
             curr_states = next_states;
         }
 
-        accepts
+        curr_states
+            .iter()
+            .filter(|state| self.accept_states.contains(state))
+            .next()
+            .is_some()
     }
 
     pub fn dump(&self, file_name: &str) -> io::Result<()> {
@@ -807,4 +809,27 @@ mod tests {
             ])
         );
     }
+
+    #[test]
+    fn accepts_word_unit_1() {
+        let regex = Regex::from_string("a((ba)*a(ab)* | a)*");
+        let mut nfa = FiniteAutomaton::from_regex(&regex);
+        nfa.eliminate_epsilon();
+
+        assert_eq!(nfa.accepts_word("a"), true);
+        assert_eq!(nfa.accepts_word("abaaa"), true);
+        assert_eq!(nfa.accepts_word("abaabaab"), false);
+        assert_eq!(nfa.accepts_word("ababab"), false);
+        assert_eq!(nfa.accepts_word("abb"), false);
+
+        let mut dfa = FiniteAutomaton::to_dfa(&nfa);
+        dfa.to_full();
+        dfa.to_minimal();
+
+        assert_eq!(dfa.accepts_word("a"), true);
+        assert_eq!(dfa.accepts_word("abaaa"), true);
+        assert_eq!(dfa.accepts_word("abaabaab"), false);
+        assert_eq!(dfa.accepts_word("ababab"), false);
+        assert_eq!(dfa.accepts_word("abb"), false);
+        }
 }

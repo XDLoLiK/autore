@@ -5,6 +5,8 @@ use std::{
 
 use colored::Colorize;
 
+use crate::FiniteAutomaton;
+
 use super::{Regex, RegexEntry, RegexOps};
 
 #[derive(Debug, Default, Clone)]
@@ -29,6 +31,10 @@ impl Regex {
 
         let mut regex_parser = RegexParser::new(expr);
         regex_parser.get_regex()
+    }
+
+    pub fn from_dfa(_dfa: &FiniteAutomaton) -> Self {
+        Self::default()
     }
 }
 
