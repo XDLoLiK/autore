@@ -831,5 +831,13 @@ mod tests {
         assert_eq!(dfa.accepts_word("abaabaab"), false);
         assert_eq!(dfa.accepts_word("ababab"), false);
         assert_eq!(dfa.accepts_word("abb"), false);
+
+        dfa.to_complement();
+
+        assert_eq!(dfa.accepts_word("a"), false);
+        assert_eq!(dfa.accepts_word("abaaa"), false);
+        assert_eq!(dfa.accepts_word("abaabaab"), true);
+        assert_eq!(dfa.accepts_word("ababab"), true);
+        assert_eq!(dfa.accepts_word("abb"), true);
     }
 }
