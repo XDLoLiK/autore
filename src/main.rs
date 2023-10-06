@@ -15,11 +15,11 @@ fn main() -> std::io::Result<()> {
     dfa.to_full();
     dfa.dump("img/dfa_full.dot")?;
 
+    dfa.to_minimal();
+    dfa.dump("img/dfa_minimal.dot")?;
+
     dfa.to_complement();
     dfa.dump("img/dfa_complement.dot")?;
-
-    // dfa.to_minimal();
-    // dfa.dump("img/dfa_minimal.dot")?;
 
     Ok(())
 }

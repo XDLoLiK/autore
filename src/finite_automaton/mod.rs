@@ -9,11 +9,9 @@ use std::{
 use tabbycat::attributes::*;
 use tabbycat::{AttrList, AttrType, Edge, GraphBuilder, GraphType, Identity, StmtList};
 
-use crate::AutomatonTransitionList;
-
 use super::{
-    AutomatonAlphabet, AutomatonState, AutomatonTransition, FiniteAutomaton, Regex, RegexEntry,
-    RegexOps,
+    AutomatonAlphabet, AutomatonState, AutomatonTransition, AutomatonTransitionList,
+    FiniteAutomaton, Regex, RegexEntry, RegexOps,
 };
 
 impl FiniteAutomaton {
@@ -190,6 +188,10 @@ impl FiniteAutomaton {
     pub fn eliminate_dead(&mut self) {
         let mut ref_count = BTreeMap::<AutomatonState, usize>::new();
 
+        self.start_states.iter().for_each(|start_state| {
+            *ref_count.entry(*start_state).or_default() += 1;
+        });
+
         self.transitions.values().for_each(|state_transitions| {
             state_transitions.values().for_each(|dest_states| {
                 dest_states.iter().for_each(|dest_state| {
@@ -198,12 +200,9 @@ impl FiniteAutomaton {
             });
         });
 
-        // We never want to eliminate state 0 here because
-        // we would then leave no start states at all
         self.transitions
             .clone()
             .keys()
-            .filter(|state| **state != 0)
             .filter(|state| ref_count.get(state).copied().unwrap_or_default() == 0)
             .for_each(|state| {
                 self.remove_state(*state);
@@ -302,6 +301,8 @@ impl FiniteAutomaton {
     }
 
     pub fn to_minimal(&mut self) {
+        let mut queue = VecDeque::<(BTreeSet<AutomatonState>, AutomatonTransition)>::new();
+        let allphabet = self.get_alphabet();
         let accept_class = self.accept_states.clone();
         let non_accept_class: BTreeSet<_> = self
             .transitions
@@ -309,9 +310,6 @@ impl FiniteAutomaton {
             .copied()
             .filter(|state| !self.accept_states.contains(state))
             .collect();
-
-        let mut queue = VecDeque::<(BTreeSet<AutomatonState>, AutomatonTransition)>::new();
-        let allphabet = self.get_alphabet();
 
         allphabet.iter().for_each(|sym| {
             queue.push_back((accept_class.clone(), *sym));
@@ -354,32 +352,61 @@ impl FiniteAutomaton {
             });
         }
 
-        let mut state_to_class = BTreeMap::<AutomatonState, BTreeSet<AutomatonState>>::new();
+        let mut state_to_class_state = BTreeMap::<AutomatonState, AutomatonState>::new();
         let mut class_to_state = BTreeMap::<BTreeSet<AutomatonState>, AutomatonState>::new();
-
-        partition.iter().for_each(|class| {
-            class.iter().for_each(|state| {
-                state_to_class.insert(*state, class.clone());
-            });
-        });
 
         partition.iter().for_each(|class| {
             let new_state = self.add_state();
             class_to_state.insert(class.clone(), new_state);
-            let mut new_transitoins = AutomatonTransitionList::new();
 
-            class.iter().for_each(|class_state| {
-                self.transitions.get(class_state).unwrap().iter().for_each(
-                    |(symbol, symbol_transitions)| {
-                        let class_transitions = BTreeSet::<AutomatonState>::new();
+            class.iter().for_each(|state| {
+                state_to_class_state.insert(*state, new_state);
+            });
+        });
 
+        self.accept_states.clone().iter().for_each(|accept_state| {
+            // SAFETY: every state must be in some equivalnce class
+            // and every equivalnce class is mapped to some new state
+            self.accept_states
+                .insert(*state_to_class_state.get(accept_state).unwrap());
+        });
+
+        self.start_states.clone().iter().for_each(|start_state| {
+            // SAFETY: every state must be in some equivalnce class
+            // and every equivalnce class is mapped to some new state
+            self.start_states
+                .insert(*state_to_class_state.get(start_state).unwrap());
+        });
+
+        partition.iter().for_each(|class| {
+            // SAFETY: all the class have been added to the map earlier
+            let class_state = class_to_state.get(class).unwrap();
+
+            class.iter().for_each(|old_state| {
+                // SAFETY: every state must have been created via
+                // new_state() and thus is present in transitions map
+                self.transitions
+                    .get(old_state)
+                    .cloned()
+                    .unwrap()
+                    .iter()
+                    .for_each(|(symbol, symbol_transitions)| {
                         symbol_transitions.iter().for_each(|symbol_transition| {
                             // SAFETY: every state must be in some equivalnce class
-                            let class_transition = state_to_class.get(symbol_transition).unwrap();
-                            new_transitoins.insert(*symbol, class_transition.clone());
+                            // and every equivalnce class is mapped to some new state
+                            let class_transition =
+                                state_to_class_state.get(symbol_transition).unwrap();
+
+                            self.transitions
+                                .entry(*class_state)
+                                .or_default()
+                                .entry(*symbol)
+                                .or_default()
+                                .insert(*class_transition);
                         });
-                    },
-                );
+                    });
+
+                self.remove_state(*old_state);
             });
         });
     }
@@ -404,7 +431,7 @@ impl FiniteAutomaton {
         for sym in word.chars() {
             let mut next_states = BTreeSet::<AutomatonState>::new();
 
-            for state in curr_states.iter() {
+            curr_states.iter().for_each(|state| {
                 // SAFETY: every state must have been created via
                 // new_state() and thus is present in transitions map
                 let curr_trans = self.transitions.get(state).unwrap();
@@ -412,7 +439,7 @@ impl FiniteAutomaton {
                 if let Some(next) = curr_trans.get(&AutomatonTransition::Symbol(sym)) {
                     next_states.extend(next.iter());
                 }
-            }
+            });
 
             if next_states.is_empty() {
                 accepts = false;
@@ -426,8 +453,8 @@ impl FiniteAutomaton {
     }
 
     pub fn dump(&self, file_name: &str) -> io::Result<()> {
-        // SAFETY: G is known to be a valid lexem
-        // SAFETY: all the required fields of the graph are initialized
+        // SAFETY: 'G' is known to be a valid id string
+        // SAFETY: all of the required fields of the graph are initialized
         let graph = GraphBuilder::default()
             .graph_type(GraphType::DiGraph)
             .strict(false)
