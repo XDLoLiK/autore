@@ -831,5 +831,5 @@ mod tests {
         assert_eq!(dfa.accepts_word("abaabaab"), false);
         assert_eq!(dfa.accepts_word("ababab"), false);
         assert_eq!(dfa.accepts_word("abb"), false);
-        }
+    }
 }
