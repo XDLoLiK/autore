@@ -1,1 +1,1 @@
-εaaa(ba | a)*bba | εaab | εaba(aa(ba | a)*bba | ab | ba)*aa(ba | a)*bε | ε | aε | εaaa(ba | a)*bε | ε | εaaε | εaε
+((εaaa((ba | a))*bba | (εaab | εab)a)((aa((ba | a))*bba | (ab | b)a))*(aa((ba | a))*(bε | ε) | aε) | (εaaa((ba | a))*(bε | ε) | (εaaε | εaε)))

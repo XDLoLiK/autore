@@ -39,32 +39,22 @@ impl Regex {
         // Step 1: Make sure there's only one start state
         // and there are no incoming edges to it
         let new_start = automaton.add_state();
+        let old_start = automaton.start_states;
+        automaton.start_states = BTreeSet::from([new_start]);
 
-        automaton
-            .start_states
-            .clone()
-            .iter()
-            .for_each(|start_state| {
-                automaton.add_transition(new_start, AutomatonTransition::Epsilon, *start_state);
-            });
-
-        automaton.start_states.clear();
-        automaton.start_states.insert(new_start);
+        old_start.iter().for_each(|start_state| {
+            automaton.add_transition(new_start, AutomatonTransition::Epsilon, *start_state);
+        });
 
         // Step 2: Make sure there's only one accept state
         // and there are no outcoming edges from it
         let new_accept = automaton.add_state();
+        let old_accept = automaton.accept_states;
+        automaton.accept_states = BTreeSet::from([new_accept]);
 
-        automaton
-            .accept_states
-            .clone()
-            .iter()
-            .for_each(|accept_state| {
-                automaton.add_transition(*accept_state, AutomatonTransition::Epsilon, new_accept);
-            });
-
-        automaton.accept_states.clear();
-        automaton.accept_states.insert(new_accept);
+        old_accept.iter().for_each(|accept_state| {
+            automaton.add_transition(*accept_state, AutomatonTransition::Epsilon, new_accept);
+        });
 
         // Step 3: Eliminate all the intermediate states one by one
         let mut regular_transitions =
@@ -83,16 +73,16 @@ impl Regex {
                         symbol_transitions.iter().for_each(|symbol_transition| {
                             Self::add_regular_transition(
                                 &mut regular_transitions,
-                                *state,
-                                Self::symbol_to_regex_ops(*symbol),
-                                *symbol_transition,
+                                state,
+                                &Self::symbol_to_regex_ops(*symbol),
+                                symbol_transition,
                             );
 
                             Self::add_regular_transition(
                                 &mut reverse_regular_transitions,
-                                *symbol_transition,
-                                Self::symbol_to_regex_ops(*symbol),
-                                *state,
+                                symbol_transition,
+                                &Self::symbol_to_regex_ops(*symbol),
+                                state,
                             );
                         });
                     });
@@ -144,16 +134,16 @@ impl Regex {
 
                             Self::add_regular_transition(
                                 &mut regular_transitions,
-                                *from,
-                                regex_combined.clone(),
-                                *to,
+                                from,
+                                &regex_combined,
+                                to,
                             );
 
                             Self::add_regular_transition(
                                 &mut reverse_regular_transitions,
-                                *to,
-                                regex_combined.clone(),
-                                *from,
+                                to,
+                                &regex_combined,
+                                from,
                             );
                         });
                 });
@@ -182,14 +172,14 @@ impl Regex {
 
     fn add_regular_transition(
         regular_transitions: &mut BTreeMap<AutomatonState, BTreeMap<AutomatonState, RegexEntry>>,
-        from: AutomatonState,
-        regex: RegexEntry,
-        to: AutomatonState,
+        from: &AutomatonState,
+        regex: &RegexEntry,
+        to: &AutomatonState,
     ) {
         regular_transitions
-            .entry(from)
+            .entry(*from)
             .or_default()
-            .entry(to)
+            .entry(*to)
             .and_modify(|regex_entry| {
                 *regex_entry = Box::new(RegexOps::Either(regex.clone(), regex_entry.clone()))
             })
@@ -210,9 +200,11 @@ impl Regex {
     fn dump_helper(curr_node: &RegexEntry, writer: &mut BufWriter<File>) -> io::Result<()> {
         match curr_node.deref() {
             RegexOps::Either(left, right) => {
+                write!(writer, "(")?;
                 Self::dump_helper(left, writer)?;
                 write!(writer, " | ")?;
                 Self::dump_helper(right, writer)?;
+                write!(writer, ")")?;
             }
             RegexOps::Consecutive(left, right) => {
                 Self::dump_helper(left, writer)?;
@@ -371,5 +363,29 @@ mod tests {
                 ))),
             }
         );
+    }
+
+    #[test]
+    fn from_finite_automaton_unit_1() {
+        let regex_initial = Regex::from_string("a((ba)*a(ab)* | a)*");
+
+        let mut nfa_initial = FiniteAutomaton::from_regex(&regex_initial);
+        nfa_initial.eliminate_epsilon();
+
+        let mut dfa_initial = FiniteAutomaton::to_dfa(&nfa_initial);
+        dfa_initial.make_full();
+        dfa_initial.make_minimal();
+
+        let regex_got = Regex::from_finite_automaton(&dfa_initial);
+
+        let mut nfa_got = FiniteAutomaton::from_regex(&regex_got);
+        nfa_got.eliminate_epsilon();
+
+        let mut dfa_got = FiniteAutomaton::to_dfa(&nfa_got);
+        dfa_got.make_full();
+        dfa_got.make_minimal();
+
+        assert!(dfa_initial.dump("img/from_finite_automaton_unit_1_dfa_initial.dot").is_ok());
+        assert!(dfa_got.dump("img/from_finite_automaton_unit_1_dfa_got.dot").is_ok());
     }
 }
