@@ -1,10 +1,10 @@
 use autore::{FiniteAutomaton, Regex};
 
 fn main() -> std::io::Result<()> {
-    let regex = Regex::from_string("a((ba)*a(ab)* | a)*");
-    println!("{:#?}", regex);
+    let regex_initial = Regex::from_string("a((ba)*a(ab)* | a)*");
+    regex_initial.dump("img/regex_initial.txt")?;
 
-    let mut nfa = FiniteAutomaton::from_regex(&regex);
+    let mut nfa = FiniteAutomaton::from_regex(&regex_initial);
     nfa.dump("img/nfa.dot")?;
     nfa.eliminate_epsilon();
     nfa.dump("img/nfa_without_epsilon.dot")?;
@@ -12,13 +12,16 @@ fn main() -> std::io::Result<()> {
     let mut dfa = FiniteAutomaton::to_dfa(&nfa);
     dfa.dump("img/dfa.dot")?;
 
-    dfa.to_full();
+    dfa.make_full();
     dfa.dump("img/dfa_full.dot")?;
 
-    dfa.to_minimal();
+    dfa.make_minimal();
     dfa.dump("img/dfa_minimal.dot")?;
 
-    dfa.to_complement();
+    let final_regex = Regex::from_finite_automaton(&dfa);
+    final_regex.dump("img/regex_final.txt")?;
+
+    dfa.make_complement();
     dfa.dump("img/dfa_complement.dot")?;
 
     Ok(())

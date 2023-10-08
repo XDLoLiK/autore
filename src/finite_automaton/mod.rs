@@ -192,13 +192,17 @@ impl FiniteAutomaton {
             *ref_count.entry(*start_state).or_default() += 1;
         });
 
-        self.transitions.values().for_each(|state_transitions| {
-            state_transitions.values().for_each(|dest_states| {
-                dest_states.iter().for_each(|dest_state| {
-                    *ref_count.entry(*dest_state).or_default() += 1;
+        self.transitions
+            .iter()
+            .for_each(|(state, state_transitions)| {
+                state_transitions.values().for_each(|dest_states| {
+                    dest_states.iter().for_each(|dest_state| {
+                        if *state != *dest_state {
+                            *ref_count.entry(*dest_state).or_default() += 1;
+                        }
+                    });
                 });
             });
-        });
 
         self.transitions
             .clone()
@@ -217,7 +221,7 @@ impl FiniteAutomaton {
         let mut reverse_mapping = HashMap::<BTreeSet<AutomatonState>, AutomatonState>::new();
 
         let start_state = dfa.add_state();
-        dfa.start_states = BTreeSet::from([start_state]);
+        dfa.start_states.insert(start_state);
         queue.push_back(start_state);
         mapping.insert(start_state, nfa.start_states.clone());
         reverse_mapping.insert(nfa.start_states.clone(), start_state);
@@ -232,7 +236,7 @@ impl FiniteAutomaton {
 
             // SAFETY: every queued state is mapped to some nfa states
             let curr_mapped_to = mapping.get(&curr_state).unwrap();
-            let mut dfa_nfa_trans =
+            let mut dfa_nfa_transitions =
                 BTreeMap::<AutomatonTransition, BTreeSet<AutomatonState>>::new();
 
             // Collect info about (dfa_state - char - nfa_states) transitions
@@ -243,17 +247,17 @@ impl FiniteAutomaton {
                 }
 
                 // SAFETY: nfa_state is guaranteed to be in nfa
-                let nfa_trans = nfa.transitions.get(nfa_state).unwrap();
+                let nfa_transitions = nfa.transitions.get(nfa_state).unwrap();
 
-                nfa_trans.iter().for_each(|(symbol, nfa_to)| {
-                    dfa_nfa_trans
+                nfa_transitions.iter().for_each(|(symbol, nfa_to)| {
+                    dfa_nfa_transitions
                         .entry(*symbol)
                         .or_default()
                         .extend(nfa_to.iter());
                 });
             });
 
-            dfa_nfa_trans.iter().for_each(|(symbol, nfa_to)| {
+            dfa_nfa_transitions.iter().for_each(|(symbol, nfa_to)| {
                 let dfa_to = match reverse_mapping.get(&nfa_to) {
                     Some(mapped_dfa) => *mapped_dfa,
                     None => {
@@ -274,7 +278,7 @@ impl FiniteAutomaton {
         dfa
     }
 
-    pub fn to_full(&mut self) {
+    pub fn make_full(&mut self) {
         let alphabet = self.get_alphabet();
         let drain = self.add_state();
 
@@ -291,7 +295,7 @@ impl FiniteAutomaton {
             });
     }
 
-    pub fn to_complement(&mut self) {
+    pub fn make_complement(&mut self) {
         self.accept_states = self
             .transitions
             .keys()
@@ -300,7 +304,7 @@ impl FiniteAutomaton {
             .collect();
     }
 
-    pub fn to_minimal(&mut self) {
+    pub fn make_minimal(&mut self) {
         let mut queue = VecDeque::<(BTreeSet<AutomatonState>, AutomatonTransition)>::new();
         let allphabet = self.get_alphabet();
         let accept_class = self.accept_states.clone();
@@ -538,7 +542,7 @@ impl FiniteAutomaton {
         stmt_list
     }
 
-    fn add_transition(
+    pub(super) fn add_transition(
         &mut self,
         from: AutomatonState,
         symbol: AutomatonTransition,
@@ -552,14 +556,17 @@ impl FiniteAutomaton {
             .insert(to);
     }
 
-    fn add_state(&mut self) -> AutomatonState {
+    pub(super) fn add_state(&mut self) -> AutomatonState {
         let new_state = self.last_state;
         self.last_state = self.last_state.saturating_add(1);
         self.transitions.insert(new_state, BTreeMap::new());
         new_state
     }
 
-    fn remove_state(&mut self, state: AutomatonState) -> Option<AutomatonTransitionList> {
+    pub(super) fn remove_state(
+        &mut self,
+        state: AutomatonState,
+    ) -> Option<AutomatonTransitionList> {
         self.start_states.remove(&state);
         self.accept_states.remove(&state);
         self.transitions.remove(&state)
@@ -823,8 +830,8 @@ mod tests {
         assert_eq!(nfa.accepts_word("abb"), false);
 
         let mut dfa = FiniteAutomaton::to_dfa(&nfa);
-        dfa.to_full();
-        dfa.to_minimal();
+        dfa.make_full();
+        dfa.make_minimal();
 
         assert_eq!(dfa.accepts_word("a"), true);
         assert_eq!(dfa.accepts_word("abaaa"), true);
@@ -832,7 +839,7 @@ mod tests {
         assert_eq!(dfa.accepts_word("ababab"), false);
         assert_eq!(dfa.accepts_word("abb"), false);
 
-        dfa.to_complement();
+        dfa.make_complement();
 
         assert_eq!(dfa.accepts_word("a"), false);
         assert_eq!(dfa.accepts_word("abaaa"), false);

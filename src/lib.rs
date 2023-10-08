@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub type RegexEntry = Box<RegexOps>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RegexOps {
     Either(RegexEntry, RegexEntry),
     Consecutive(RegexEntry, RegexEntry),
@@ -16,7 +16,7 @@ pub enum RegexOps {
     Epsilon,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Regex {
     root: Option<RegexEntry>,
 }
