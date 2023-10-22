@@ -1,36 +1,35 @@
-use autore::{FiniteAutomaton, Regex};
+use std::io;
 
-fn main() -> std::io::Result<()> {
-    let regex_initial = Regex::from_string("a((ba)*a(ab)* | a)*");
-    regex_initial.dump("img/regex_initial.txt")?;
+use autore::{min_word_len_exectly_symbol_count, FiniteAutomaton, Regex};
 
-    let mut nfa = FiniteAutomaton::from_regex(&regex_initial);
-    nfa.dump("img/nfa.dot")?;
+fn main() -> io::Result<()> {
+    let mut rpn = String::new();
+    io::stdin().read_line(&mut rpn)?;
+    let regex = Regex::from_rpn(&rpn);
+
+    let mut nfa = FiniteAutomaton::from_regex(&regex);
     nfa.eliminate_epsilon();
-    nfa.dump("img/nfa_without_epsilon.dot")?;
 
-    let mut dfa = FiniteAutomaton::to_dfa(&nfa);
-    dfa.dump("img/dfa.dot")?;
+    // 11
+    let read_x_k = || -> (char, usize) {
+        let mut buf = String::new();
+        io::stdin().read_line(&mut buf).unwrap();
+        let mut x_k = buf.trim().split_whitespace();
 
-    dfa.make_full();
-    dfa.dump("img/dfa_full.dot")?;
+        (
+            x_k.next().unwrap().parse::<char>().unwrap(),
+            x_k.next().unwrap().parse::<usize>().unwrap(),
+        )
+    };
 
-    dfa.make_minimal();
-    dfa.dump("img/dfa_minimal.dot")?;
+    let (x, k) = read_x_k();
+    let (is_found, min_len) = min_word_len_exectly_symbol_count(&nfa, x, k);
 
-    dfa.make_complement();
-    dfa.dump("img/dfa_complement.dot")?;
-
-    dfa.make_complement();
-    let final_regex = Regex::from_finite_automaton(&dfa);
-    final_regex.dump("img/regex_final.txt")?;
-
-    let mut nfa_second = FiniteAutomaton::from_regex(&final_regex);
-    nfa_second.eliminate_epsilon();
-    let mut dfa_second = FiniteAutomaton::to_dfa(&nfa);
-    dfa_second.make_full();
-    dfa_second.make_minimal();
-    dfa_second.dump("img/dfa_second_minimal.dot")?;
+    if is_found {
+        println!("{min_len}");
+    } else {
+        println!("INF");
+    }
 
     Ok(())
 }

@@ -10,12 +10,25 @@ use colored::Colorize;
 use super::{AutomatonState, AutomatonTransition, FiniteAutomaton, Regex, RegexEntry, RegexOps};
 
 #[derive(Debug, Default, Clone)]
+struct RpnConverter {
+    stack: VecDeque<String>,
+    rpn: String,
+}
+
+#[derive(Debug, Default, Clone)]
 struct RegexParser {
     expr: String,
     curr_pos: usize,
 }
 
 impl Regex {
+    pub fn from_rpn(rpn: &str) -> Self {
+        let mut rpn_converter = RpnConverter::new(rpn.to_string());
+        let expr = rpn_converter.get_infix();
+        let mut regex_parser = RegexParser::new(expr.to_string());
+        regex_parser.get_regex()
+    }
+
     pub fn from_string(expr: &str) -> Self {
         let mut regex_parser = RegexParser::new(expr.to_string());
         regex_parser.get_regex()
@@ -237,6 +250,52 @@ impl Regex {
     }
 }
 
+impl RpnConverter {
+    fn new(mut rpn: String) -> Self {
+        rpn.retain(|sym| !sym.is_whitespace());
+        Self {
+            stack: VecDeque::<String>::new(),
+            rpn: rpn.chars().rev().collect(),
+        }
+    }
+
+    fn get_infix(&mut self) -> String {
+        let embrace = |expr: &str| -> String {
+            let mut new_expr = '('.to_string();
+            new_expr.push_str(expr);
+            new_expr.push(')');
+            new_expr
+        };
+
+        // SAFETY: all operations with stack are guaranteed to return a valid entry
+        while let Some(symbol) = self.rpn.pop() {
+            match symbol {
+                '.' => {
+                    let right = embrace(&self.stack.pop_back().unwrap());
+                    let mut left = embrace(&self.stack.pop_back().unwrap());
+                    left.push_str(&right);
+                    self.stack.push_back(left);
+                }
+                '+' => {
+                    let right = embrace(&self.stack.pop_back().unwrap());
+                    let mut left = embrace(&self.stack.pop_back().unwrap());
+                    left.push('|');
+                    left.push_str(&right);
+                    self.stack.push_back(left);
+                }
+                '*' => {
+                    let mut expr = embrace(&self.stack.pop_back().unwrap());
+                    expr.push('*');
+                    self.stack.push_back(expr);
+                }
+                _ => self.stack.push_back(symbol.to_string()),
+            }
+        }
+
+        self.stack.pop_back().unwrap()
+    }
+}
+
 impl RegexParser {
     fn new(mut expr: String) -> Self {
         expr.retain(|sym| !sym.is_whitespace());
@@ -385,7 +444,11 @@ mod tests {
         dfa_got.make_full();
         dfa_got.make_minimal();
 
-        assert!(dfa_initial.dump("img/from_finite_automaton_unit_1_dfa_initial.dot").is_ok());
-        assert!(dfa_got.dump("img/from_finite_automaton_unit_1_dfa_got.dot").is_ok());
+        assert!(dfa_initial
+            .dump("img/from_finite_automaton_unit_1_dfa_initial.dot")
+            .is_ok());
+        assert!(dfa_got
+            .dump("img/from_finite_automaton_unit_1_dfa_got.dot")
+            .is_ok());
     }
 }

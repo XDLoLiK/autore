@@ -1,0 +1,1 @@
+((ε(a)*bba(aa)*(ab | b) | ε(a)*bbb)b((bb | a(aa)*(ab | b)b))*(ba((b | a))*ε | (a(aa)*(ab | b)(a((b | a))*ε | ε) | a(aa)*ε)) | ((ε(a)*bba(aa)*(ab | b) | ε(a)*bbb)(a((b | a))*ε | ε) | (ε(a)*bba(aa)*ε | (ε(a)*ba((b | a))*ε | (ε(a)*bε | ε(a)*ε)))))
