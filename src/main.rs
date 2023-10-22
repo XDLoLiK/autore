@@ -1,6 +1,6 @@
 use std::io;
 
-use autore::{min_word_len_exectly_symbol_count, FiniteAutomaton, Regex};
+use autore::{min_word_len_exactly_symbol_count, FiniteAutomaton, Regex};
 
 fn main() -> io::Result<()> {
     let mut rpn = String::new();
@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
     };
 
     let (x, k) = read_x_k();
-    let (is_found, min_len) = min_word_len_exectly_symbol_count(&nfa, x, k);
+    let (is_found, min_len) = min_word_len_exactly_symbol_count(&nfa, x, k);
 
     if is_found {
         println!("{min_len}");

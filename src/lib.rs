@@ -46,7 +46,7 @@ pub struct FiniteAutomaton {
     transitions: BTreeMap<AutomatonState, AutomatonTransitionList>,
 }
 
-pub fn min_word_len_exectly_symbol_count(
+pub fn min_word_len_exactly_symbol_count(
     automaton: &FiniteAutomaton,
     symbol: char,
     count: usize,
