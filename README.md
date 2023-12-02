@@ -3,7 +3,7 @@ A tiny library for converting regular expressions to different kinds of finite a
 
 # dependecies
 - make
-- rust (edition 2023)
+- rust (edition 2021)
 - graphviz
 - colored (version 2.0.4)
 - tabbycat (version 0.1.3)
